@@ -11,7 +11,7 @@ converted the ADC counts back to CP voltage, but the results didn't match the re
 
 - The Control Pilot signal is an EV charger and a car used to communicate (IEC 61851-1 / SAE J1772):
 
-- The charger(EVSE) drives a **+12V, 1 kHz square wave** on the CP line. 
+- The charger(EVSE) drives a **12V, 1 kHz square wave** on the CP line. 
 - The **car changes the voltage level** with its own resistors, to signal its state: 
 
 | CP voltage | State | Meaning |
@@ -24,7 +24,7 @@ converted the ADC counts back to CP voltage, but the results didn't match the re
 | -12 V | F | Charger fault |
 
 - The -12 V level has second role, it the **low half of every PWM cycle**. The car has a diode on the CP line, so it can only pull down the positive half. If the doesn't read -12 V, the diode is missing and the charger must not charge.
-- The **charger set duty cycle (PWM width) to tell the car the maximum current it may draw from charger.
+- The **charger set duty cycle (PWM width)** to tell the car the maximum current it may draw from charger.
 
 The MCU ADC only accepts 0-3.3V, so a resistor dividor must maps the full **the -12 V to +12 V signal** range into the window. That divider is where this story happens.
 
@@ -32,17 +32,19 @@ The MCU ADC only accepts 0-3.3V, so a resistor dividor must maps the full **the 
 
 - Lets take a example circuit for CP ADC conversion.
 - The divider has three resistors meeting at one node, which connects the ADC pin:
+  ```
   CP (±12 V)-----[R1 300k]------[R3 82k]------3.3 V (Pull up)
-  |                         |
-  |-----------------------> ADC pin (Vn) 
-  |
-  [R2 100k]
-  |
-  GND
+                            |                         
+                            |-----------------------> ADC pin (Vn) 
+                            |
+                            |[R2 100k]
+                            |
+                           GND
+  ```
 
 ### Step 1: KCL at the node n
 
-- Krichoff's current law says all the current flowing into a node must sum to zero. we assume every current flow into node, So no need to guess directions. No problem on this assumption because current flows out of the node, will comes out negative.
+- Kirchhoff's current law says all the current flowing into a node must sum to zero. we assume every current flow into node, So no need to guess directions. No problem on this assumption because current flows out of the node, will comes out negative.
 
     (Vcp - Vn) / R1 + (3.3 - Vn) / R3 + (0 - Vn) / R2 = 0
 
@@ -165,9 +167,9 @@ Combined with counts -> pin voltage (substitute the Vn gives)
 | 1867 | 0 V | 0.00 V |
 
 ### A mistake I made during debugging: 
-    I used measured pull-up rail 3.2 V for the slope as well:
+I used measured pull-up rail 3.2 V for the slope as well:
         
-        Vcp = counts × 0.00598 - 11.52  ==>  read 11.29 V at 12 V
+    Vcp = counts × 0.00598 - 11.52  ==>  read 11.29 V at 12 V
 
 I used AI to help analyze where my formula went wrong, by giving the measurements I did in this board using multimeter. From that I learned VDDA is 3.3 V means the ADC reference is working correctly with 3.3 V.
  
@@ -187,8 +189,9 @@ When multiple boards are built, I plan to use **two pointer calibration**, measu
     Vcp = (counts - counts at 0 V) × 12 / (counts at 12 V - counts at 0 V)
         
 A straight line is defined by two points here, 0 V and 12 V. On this board at 0 V the counts is 1867 and at 12 V the counts is 3814, 
-    => Vcp = (counts - 1867) × (12 / 1947) => (counts - 1867) × 0.00616 V. here slope is same as formula. 
-    from this we can get value of the voltage from counts using MCU calculation without using multimeter measurement.
+    Vcp = (counts - 1867) × (12 / 1947) => (counts - 1867) × 0.00616 V. 
+
+here slope is same as formula, from this we can get value of the voltage from counts using MCU calculation without using multimeter measurement.
 
 ## What I learned from this
 
@@ -208,7 +211,7 @@ The calculation predicted 3812 counts, and the board measured 3814. When they ma
 **7. Pick the fix that fits the situation.**
 A manual formula is fine for one test board. If multiple boards are there, we should do two-point calibration here, which absorbs every board's errors automatically, but with clear documentation.
  
-**9. Find the root cause instead of adding a correction factor.**
+**8. Find the root cause instead of adding a correction factor.**
 A fudge factor would have made this one board read 12 V and broken the next one. After I found the issue I reported the issue to the hardware team.
 
 
@@ -248,4 +251,3 @@ float cp_volts_calibrated(uint16_t counts, const cp_calib_t *cal)
            / (float)(cal->counts_12v - cal->counts_0v);
 }
 ```
-
